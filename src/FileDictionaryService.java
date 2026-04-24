@@ -32,7 +32,10 @@ public class FileDictionaryService implements DictionaryService {
             while ((line = reader.readLine()) != null) {
                 String[] parts = line.split(":", 2);
                 if (parts.length == 2) {
-                    entries.add(new DictionaryEntry(parts[0], parts[1]));
+                    DictionaryEntry entry = new DictionaryEntry(parts[0], parts[1]);
+                    if (validator.validateKey(entry.getKey())) {
+                        entries.add(entry);
+                    }
                 }
             }
         } catch (IOException e) {
@@ -43,18 +46,26 @@ public class FileDictionaryService implements DictionaryService {
 
     @Override
     public boolean deleteByKey(String key) {
-        List<DictionaryEntry> entries = readAll();
-        boolean removed = entries.removeIf(entry -> entry.getKey().equals(key));
+        if (!validator.validateKey(key)) {
+            System.err.println("Ошибка: ключ '" + key + "' не соответствует правилам словаря '" + dictionaryName + "'");
+            return false;
+        }
+
+        List<DictionaryEntry> allEntries = readAllFromFile();
+        boolean removed = allEntries.removeIf(entry -> entry.getKey().equals(key));
 
         if (removed) {
-            saveAll(entries);
+            saveAll(allEntries);
         }
         return removed;
     }
 
     @Override
     public DictionaryEntry findByKey(String key) {
-        return readAll().stream()
+        if (!validator.validateKey(key)) {
+            return null;
+        }
+        return readAllFromFile().stream()
                 .filter(entry -> entry.getKey().equals(key))
                 .findFirst()
                 .orElse(null);
@@ -68,15 +79,32 @@ public class FileDictionaryService implements DictionaryService {
             return false;
         }
 
-        if (findByKey(entry.getKey()) != null) {
+        List<DictionaryEntry> allEntries = readAllFromFile();
+
+        if (allEntries.stream().anyMatch(e -> e.getKey().equals(entry.getKey()))) {
             System.err.println("Ошибка: ключ '" + entry.getKey() + "' уже существует");
             return false;
         }
 
-        List<DictionaryEntry> entries = readAll();
-        entries.add(entry);
-        saveAll(entries);
+        allEntries.add(entry);
+        saveAll(allEntries);
         return true;
+    }
+
+    private List<DictionaryEntry> readAllFromFile() {
+        List<DictionaryEntry> entries = new ArrayList<>();
+        try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] parts = line.split(":", 2);
+                if (parts.length == 2) {
+                    entries.add(new DictionaryEntry(parts[0], parts[1]));
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("Ошибка чтения файла: " + e.getMessage());
+        }
+        return entries;
     }
 
     private void saveAll(List<DictionaryEntry> entries) {
